@@ -19,6 +19,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { CallToolRequestSchema, ListToolsRequestSchema, } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { searchGuidance, getGuidance, searchAdvisories, getAdvisory, listFrameworks, } from "./db.js";
+import { buildItemCitation } from "./utils/citation.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const PORT = parseInt(process.env["PORT"] ?? "3000", 10);
@@ -159,7 +160,11 @@ function createMcpServer() {
                         status: parsed.status,
                         limit: parsed.limit,
                     });
-                    return textContent({ results, count: results.length });
+                    const annotated = results.map((r) => ({
+                        ...r,
+                        _citation: buildItemCitation(r, "ro_cyber_search_guidance"),
+                    }));
+                    return textContent({ results: annotated, count: annotated.length });
                 }
                 case "ro_cyber_get_guidance": {
                     const parsed = GetGuidanceArgs.parse(args);
@@ -176,7 +181,11 @@ function createMcpServer() {
                         severity: parsed.severity,
                         limit: parsed.limit,
                     });
-                    return textContent({ results, count: results.length });
+                    const annotated = results.map((r) => ({
+                        ...r,
+                        _citation: buildItemCitation(r, "ro_cyber_search_advisories"),
+                    }));
+                    return textContent({ results: annotated, count: annotated.length });
                 }
                 case "ro_cyber_get_advisory": {
                     const parsed = GetAdvisoryArgs.parse(args);

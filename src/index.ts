@@ -27,7 +27,7 @@ import {
   getAdvisory,
   listFrameworks,
 } from "./db.js";
-import { buildCitation } from "./utils/citation.js";
+import { buildCitation, buildItemCitation } from "./utils/citation.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -222,7 +222,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           status: parsed.status,
           limit: parsed.limit,
         });
-        return textContent({ results, count: results.length });
+        const annotated = results.map((r) => ({
+          ...(r as unknown as Record<string, unknown>),
+          _citation: buildItemCitation(r, "ro_cyber_search_guidance"),
+        }));
+        return textContent({ results: annotated, count: annotated.length });
       }
 
       case "ro_cyber_get_guidance": {
@@ -247,7 +251,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           severity: parsed.severity,
           limit: parsed.limit,
         });
-        return textContent({ results, count: results.length });
+        const annotated = results.map((r) => ({
+          ...(r as unknown as Record<string, unknown>),
+          _citation: buildItemCitation(r, "ro_cyber_search_advisories"),
+        }));
+        return textContent({ results: annotated, count: annotated.length });
       }
 
       case "ro_cyber_get_advisory": {
