@@ -26,10 +26,12 @@ import {
   searchAdvisories,
   getAdvisory,
   listFrameworks,
+  type Guidance,
+  type Advisory,
   type SearchGuidanceOptions,
   type SearchAdvisoriesOptions,
 } from "./db.js";
-import { buildCitation, buildItemCitation } from "./utils/citation.js";
+import { buildCitation, buildItemCitation, type AnnotatedRow } from "./utils/citation.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -216,13 +218,13 @@ export interface SearchAdvisoriesHandlerArgs {
 }
 
 export interface SearchHandlerResult<T> {
-  results: (T & { _citation: ReturnType<typeof buildItemCitation> })[];
+  results: AnnotatedRow<T>[];
   count: number;
 }
 
 export function handleSearchGuidance(
   args: SearchGuidanceHandlerArgs,
-): SearchHandlerResult<Record<string, unknown>> {
+): SearchHandlerResult<Guidance> {
   const results = searchGuidance({
     query: args.query,
     type: args.type,
@@ -230,8 +232,8 @@ export function handleSearchGuidance(
     status: args.status,
     limit: args.limit,
   });
-  const annotated = results.map((r) => ({
-    ...(r as unknown as Record<string, unknown>),
+  const annotated: AnnotatedRow<Guidance>[] = results.map((r) => ({
+    ...r,
     _citation: buildItemCitation(r, "ro_cyber_search_guidance"),
   }));
   return { results: annotated, count: annotated.length };
@@ -239,14 +241,14 @@ export function handleSearchGuidance(
 
 export function handleSearchAdvisories(
   args: SearchAdvisoriesHandlerArgs,
-): SearchHandlerResult<Record<string, unknown>> {
+): SearchHandlerResult<Advisory> {
   const results = searchAdvisories({
     query: args.query,
     severity: args.severity,
     limit: args.limit,
   });
-  const annotated = results.map((r) => ({
-    ...(r as unknown as Record<string, unknown>),
+  const annotated: AnnotatedRow<Advisory>[] = results.map((r) => ({
+    ...r,
     _citation: buildItemCitation(r, "ro_cyber_search_advisories"),
   }));
   return { results: annotated, count: annotated.length };
@@ -281,11 +283,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
         const _citation = buildCitation(
           parsed.reference,
-          (doc as unknown as Record<string, unknown>).title as string || parsed.reference,
+          doc.title || parsed.reference,
           "ro_cyber_get_guidance",
           { reference: parsed.reference },
         );
-        return textContent({ ...doc as unknown as Record<string, unknown>, _citation });
+        return textContent({ ...doc, _citation });
       }
 
       case "ro_cyber_search_advisories": {
@@ -301,11 +303,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
         const _citation = buildCitation(
           parsed.reference,
-          (advisory as unknown as Record<string, unknown>).title as string || parsed.reference,
+          advisory.title || parsed.reference,
           "ro_cyber_get_advisory",
           { reference: parsed.reference },
         );
-        return textContent({ ...advisory as unknown as Record<string, unknown>, _citation });
+        return textContent({ ...advisory, _citation });
       }
 
       case "ro_cyber_list_frameworks": {

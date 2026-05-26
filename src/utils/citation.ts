@@ -130,8 +130,10 @@ export function buildProvisionCitation(
  *
  * Pattern table (reference prefix → URL path):
  *   DNSC-DOC-<slug>    → /vezi/document/<slug>
- *   DNSC-ALERT-CVE-… → /citeste/alerta-cve-…
  *   DNSC-ALERT-<slug>  → /citeste/alerta-<slug>
+ *     (includes CVE variants: DNSC-ALERT-CVE-YYYY-N → /citeste/alerta-cve-YYYY-N,
+ *      because ingestion strips "alerta-" and keeps the remainder verbatim as the
+ *      ALERT slug — the CVE prefix is part of the slug, not a separate path segment)
  *   DNSC-WEEKLY-YYYY-MM-DD → /citeste/stirile-saptamanii-din-cybersecurity-DD-MM-YYYY
  *   DNSC-COMM-<slug>   → /citeste/comunicat-<slug>
  *   DNSC-ART-<slug>    → /citeste/<slug>
@@ -145,13 +147,11 @@ export function dnscReferenceToSourceUrl(reference: string): string {
     return `${BASE}/vezi/document/${slug}`;
   }
 
-  if (ref.startsWith("DNSC-ALERT-CVE-")) {
-    // DNSC-ALERT-CVE-YYYY-N → alerta-cve-YYYY-N
-    const slug = reference.slice("DNSC-ALERT-".length).toLowerCase();
-    return `${BASE}/citeste/alerta-${slug}`;
-  }
-
   if (ref.startsWith("DNSC-ALERT-")) {
+    // Covers both DNSC-ALERT-<slug> and DNSC-ALERT-CVE-YYYY-N.
+    // The ingestion converts /citeste/alerta-cve-YYYY-N → DNSC-ALERT-CVE-YYYY-N,
+    // so stripping "DNSC-ALERT-" gives the full slug (e.g. "cve-2024-12345"),
+    // which maps back to the same /citeste/alerta-<slug> pattern.
     const slug = reference.slice("DNSC-ALERT-".length).toLowerCase();
     return `${BASE}/citeste/alerta-${slug}`;
   }
@@ -181,6 +181,13 @@ export function dnscReferenceToSourceUrl(reference: string): string {
   // Unknown pattern — fall back to DNSC homepage
   return `${BASE}/`;
 }
+
+/**
+ * A row of type T annotated with gateway citation fields.
+ * Replaces the `as unknown as Record<string, unknown>` double-cast pattern
+ * at every .map() call site in handlers.
+ */
+export type AnnotatedRow<T> = T & { _citation: ItemCitationFields };
 
 export interface ItemCitationFields {
   source: string;

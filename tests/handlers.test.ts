@@ -8,10 +8,86 @@
  * in index.ts forgets to call .map() at all, because the handler functions
  * would be skipped.
  *
- * Tests run against the real data/dnsc.db included in the repo.
+ * The DB layer is mocked so tests run cleanly on a fresh checkout (data/dnsc.db
+ * is gitignored; fileMustExist: true would crash otherwise). Fixture data uses
+ * realistic reference patterns so the dnscReferenceToSourceUrl branches are
+ * exercised in the same way as the real corpus.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import type { Guidance, Advisory } from "../src/db.js";
+
+vi.mock("../src/db.js", async () => {
+  const actual = await vi.importActual<typeof import("../src/db.js")>("../src/db.js");
+
+  const guidanceFixtures: Guidance[] = [
+    {
+      id: 1,
+      reference: "DNSC-G-01/2023",
+      title: "Ghid pentru securitatea serviciilor cloud",
+      title_en: "Cloud Services Security Guide",
+      date: "2023-04-10",
+      type: "guideline",
+      series: "DNSC",
+      summary: "Cerinte minime de securitate pentru serviciile cloud.",
+      full_text: "...",
+      topics: "cloud,securitate",
+      status: "current",
+    },
+    {
+      id: 2,
+      reference: "DNSC-ALERT-VULNERABILITATE-CRITICA-IN-NGINX-UI",
+      title: "ALERTA: Vulnerabilitate critica in Nginx UI",
+      title_en: null,
+      date: "2024-03-09",
+      type: "guideline",
+      series: "DNSC",
+      summary: null,
+      full_text: "...",
+      topics: null,
+      status: "current",
+    },
+  ];
+
+  const advisoryFixtures: Advisory[] = [
+    {
+      id: 1,
+      reference: "DNSC-ALERT-2024-001",
+      title: "Vulnerabilitate critica Microsoft Exchange Server",
+      date: "2024-02-15",
+      severity: "critical",
+      affected_products: "Microsoft Exchange Server 2016, 2019",
+      summary: "Exploatare activa CVE-2024-21410.",
+      full_text: "...",
+      cve_references: "CVE-2024-21410",
+    },
+    {
+      id: 2,
+      reference: "DNSC-ALERT-2024-002",
+      title: "Campanie phishing",
+      date: "2024-06-10",
+      severity: "high",
+      affected_products: null,
+      summary: null,
+      full_text: "...",
+      cve_references: null,
+    },
+  ];
+
+  return {
+    ...actual,
+    getDb: () => { throw new Error("getDb must not be called in tests — DB layer is mocked"); },
+    searchGuidance: (opts: { query: string; limit?: number }): Guidance[] => {
+      // Simulate no-hits for the sentinel query used in "returns empty" tests.
+      if (opts.query.includes("zzzzz_no_hits")) return [];
+      return guidanceFixtures.slice(0, opts.limit ?? guidanceFixtures.length);
+    },
+    searchAdvisories: (opts: { query: string; limit?: number }): Advisory[] => {
+      if (opts.query.includes("zzzzz_no_hits")) return [];
+      return advisoryFixtures.slice(0, opts.limit ?? advisoryFixtures.length);
+    },
+  };
+});
 import {
   handleSearchGuidance,
   handleSearchAdvisories,
