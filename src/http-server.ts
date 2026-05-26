@@ -29,7 +29,10 @@ import {
   searchAdvisories,
   getAdvisory,
   listFrameworks,
+  type Guidance,
+  type Advisory,
 } from "./db.js";
+import { buildItemCitation, type AnnotatedRow } from "./utils/citation.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -195,7 +198,11 @@ function createMcpServer(): Server {
             status: parsed.status,
             limit: parsed.limit,
           });
-          return textContent({ results, count: results.length });
+          const annotated: AnnotatedRow<Guidance>[] = results.map((r) => ({
+            ...r,
+            _citation: buildItemCitation(r, "ro_cyber_search_guidance"),
+          }));
+          return textContent({ results: annotated, count: annotated.length });
         }
 
         case "ro_cyber_get_guidance": {
@@ -214,7 +221,11 @@ function createMcpServer(): Server {
             severity: parsed.severity,
             limit: parsed.limit,
           });
-          return textContent({ results, count: results.length });
+          const annotated: AnnotatedRow<Advisory>[] = results.map((r) => ({
+            ...r,
+            _citation: buildItemCitation(r, "ro_cyber_search_advisories"),
+          }));
+          return textContent({ results: annotated, count: annotated.length });
         }
 
         case "ro_cyber_get_advisory": {

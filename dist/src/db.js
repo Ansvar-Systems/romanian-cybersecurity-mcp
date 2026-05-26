@@ -9,8 +9,6 @@
  * FTS5 virtual tables back full-text search on guidance and advisories.
  */
 import Database from "better-sqlite3";
-import { existsSync, mkdirSync } from "node:fs";
-import { dirname } from "node:path";
 const DB_PATH = process.env["DNSC_DB_PATH"] ?? "data/dnsc.db";
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS guidance (
@@ -106,14 +104,7 @@ let _db = null;
 export function getDb() {
     if (_db)
         return _db;
-    const dir = dirname(DB_PATH);
-    if (!existsSync(dir)) {
-        mkdirSync(dir, { recursive: true });
-    }
-    _db = new Database(DB_PATH);
-    _db.pragma("journal_mode = WAL");
-    _db.pragma("foreign_keys = ON");
-    _db.exec(SCHEMA_SQL);
+    _db = new Database(DB_PATH, { readonly: true, fileMustExist: true });
     return _db;
 }
 export function searchGuidance(opts) {

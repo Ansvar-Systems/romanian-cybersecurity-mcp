@@ -16,6 +16,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { searchGuidance, getGuidance, searchAdvisories, getAdvisory, listFrameworks, } from "./db.js";
+import { buildCitation, buildItemCitation } from "./utils/citation.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 let pkgVersion = "0.1.0";
@@ -183,7 +184,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     status: parsed.status,
                     limit: parsed.limit,
                 });
-                return textContent({ results, count: results.length });
+                const annotated = results.map((r) => ({
+                    ...r,
+                    _citation: buildItemCitation(r, "ro_cyber_search_guidance"),
+                }));
+                return textContent({ results: annotated, count: annotated.length });
             }
             case "ro_cyber_get_guidance": {
                 const parsed = GetGuidanceArgs.parse(args);
@@ -191,7 +196,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 if (!doc) {
                     return errorContent(`Guidance document not found: ${parsed.reference}`);
                 }
-                return textContent(doc);
+                const _citation = buildCitation(parsed.reference, doc.title || parsed.reference, "ro_cyber_get_guidance", { reference: parsed.reference });
+                return textContent({ ...doc, _citation });
             }
             case "ro_cyber_search_advisories": {
                 const parsed = SearchAdvisoriesArgs.parse(args);
@@ -200,7 +206,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     severity: parsed.severity,
                     limit: parsed.limit,
                 });
-                return textContent({ results, count: results.length });
+                const annotated = results.map((r) => ({
+                    ...r,
+                    _citation: buildItemCitation(r, "ro_cyber_search_advisories"),
+                }));
+                return textContent({ results: annotated, count: annotated.length });
             }
             case "ro_cyber_get_advisory": {
                 const parsed = GetAdvisoryArgs.parse(args);
@@ -208,7 +218,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 if (!advisory) {
                     return errorContent(`Advisory not found: ${parsed.reference}`);
                 }
-                return textContent(advisory);
+                const _citation = buildCitation(parsed.reference, advisory.title || parsed.reference, "ro_cyber_get_advisory", { reference: parsed.reference });
+                return textContent({ ...advisory, _citation });
             }
             case "ro_cyber_list_frameworks": {
                 const frameworks = listFrameworks();

@@ -26,8 +26,12 @@ import {
   searchAdvisories,
   getAdvisory,
   listFrameworks,
+  type Guidance,
+  type Advisory,
+  type SearchGuidanceOptions,
+  type SearchAdvisoriesOptions,
 } from "./db.js";
-import { buildCitation } from "./utils/citation.js";
+import { buildCitation, buildItemCitation, type AnnotatedRow } from "./utils/citation.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -197,6 +201,59 @@ function errorContent(message: string) {
   };
 }
 
+// --- Exported handler functions (testable without MCP wire protocol) ----------
+
+export interface SearchGuidanceHandlerArgs {
+  query: string;
+  type?: SearchGuidanceOptions["type"] | undefined;
+  series?: SearchGuidanceOptions["series"] | undefined;
+  status?: SearchGuidanceOptions["status"] | undefined;
+  limit?: number | undefined;
+}
+
+export interface SearchAdvisoriesHandlerArgs {
+  query: string;
+  severity?: SearchAdvisoriesOptions["severity"] | undefined;
+  limit?: number | undefined;
+}
+
+export interface SearchHandlerResult<T> {
+  results: AnnotatedRow<T>[];
+  count: number;
+}
+
+export function handleSearchGuidance(
+  args: SearchGuidanceHandlerArgs,
+): SearchHandlerResult<Guidance> {
+  const results = searchGuidance({
+    query: args.query,
+    type: args.type,
+    series: args.series,
+    status: args.status,
+    limit: args.limit,
+  });
+  const annotated: AnnotatedRow<Guidance>[] = results.map((r) => ({
+    ...r,
+    _citation: buildItemCitation(r, "ro_cyber_search_guidance"),
+  }));
+  return { results: annotated, count: annotated.length };
+}
+
+export function handleSearchAdvisories(
+  args: SearchAdvisoriesHandlerArgs,
+): SearchHandlerResult<Advisory> {
+  const results = searchAdvisories({
+    query: args.query,
+    severity: args.severity,
+    limit: args.limit,
+  });
+  const annotated: AnnotatedRow<Advisory>[] = results.map((r) => ({
+    ...r,
+    _citation: buildItemCitation(r, "ro_cyber_search_advisories"),
+  }));
+  return { results: annotated, count: annotated.length };
+}
+
 // --- Server setup ------------------------------------------------------------
 
 const server = new Server(
@@ -215,14 +272,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     switch (name) {
       case "ro_cyber_search_guidance": {
         const parsed = SearchGuidanceArgs.parse(args);
-        const results = searchGuidance({
-          query: parsed.query,
-          type: parsed.type,
-          series: parsed.series,
-          status: parsed.status,
-          limit: parsed.limit,
-        });
-        return textContent({ results, count: results.length });
+        return textContent(handleSearchGuidance(parsed));
       }
 
       case "ro_cyber_get_guidance": {
@@ -233,21 +283,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
         const _citation = buildCitation(
           parsed.reference,
-          (doc as unknown as Record<string, unknown>).title as string || parsed.reference,
+          doc.title || parsed.reference,
           "ro_cyber_get_guidance",
           { reference: parsed.reference },
         );
-        return textContent({ ...doc as unknown as Record<string, unknown>, _citation });
+        return textContent({ ...doc, _citation });
       }
 
       case "ro_cyber_search_advisories": {
         const parsed = SearchAdvisoriesArgs.parse(args);
-        const results = searchAdvisories({
-          query: parsed.query,
-          severity: parsed.severity,
-          limit: parsed.limit,
-        });
-        return textContent({ results, count: results.length });
+        return textContent(handleSearchAdvisories(parsed));
       }
 
       case "ro_cyber_get_advisory": {
@@ -258,11 +303,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
         const _citation = buildCitation(
           parsed.reference,
-          (advisory as unknown as Record<string, unknown>).title as string || parsed.reference,
+          advisory.title || parsed.reference,
           "ro_cyber_get_advisory",
           { reference: parsed.reference },
         );
-        return textContent({ ...advisory as unknown as Record<string, unknown>, _citation });
+        return textContent({ ...advisory, _citation });
       }
 
       case "ro_cyber_list_frameworks": {
@@ -303,7 +348,13 @@ async function main(): Promise<void> {
   process.stderr.write(`${SERVER_NAME} v${pkgVersion} running on stdio\n`);
 }
 
-main().catch((err) => {
-  process.stderr.write(`Fatal error: ${err instanceof Error ? err.message : String(err)}\n`);
-  process.exit(1);
-});
+// Guard: skip stdio connection when running under the test runner.
+// Vitest sets the VITEST env variable; without this guard, importing
+// the module in tests would call server.connect(StdioTransport) and
+// attempt to read from stdin.
+if (!process.env["VITEST"]) {
+  main().catch((err) => {
+    process.stderr.write(`Fatal error: ${err instanceof Error ? err.message : String(err)}\n`);
+    process.exit(1);
+  });
+}
