@@ -26,6 +26,8 @@ import {
   searchAdvisories,
   getAdvisory,
   listFrameworks,
+  type SearchGuidanceOptions,
+  type SearchAdvisoriesOptions,
 } from "./db.js";
 import { buildCitation, buildItemCitation } from "./utils/citation.js";
 
@@ -197,6 +199,59 @@ function errorContent(message: string) {
   };
 }
 
+// --- Exported handler functions (testable without MCP wire protocol) ----------
+
+export interface SearchGuidanceHandlerArgs {
+  query: string;
+  type?: SearchGuidanceOptions["type"] | undefined;
+  series?: SearchGuidanceOptions["series"] | undefined;
+  status?: SearchGuidanceOptions["status"] | undefined;
+  limit?: number | undefined;
+}
+
+export interface SearchAdvisoriesHandlerArgs {
+  query: string;
+  severity?: SearchAdvisoriesOptions["severity"] | undefined;
+  limit?: number | undefined;
+}
+
+export interface SearchHandlerResult<T> {
+  results: (T & { _citation: ReturnType<typeof buildItemCitation> })[];
+  count: number;
+}
+
+export function handleSearchGuidance(
+  args: SearchGuidanceHandlerArgs,
+): SearchHandlerResult<Record<string, unknown>> {
+  const results = searchGuidance({
+    query: args.query,
+    type: args.type,
+    series: args.series,
+    status: args.status,
+    limit: args.limit,
+  });
+  const annotated = results.map((r) => ({
+    ...(r as unknown as Record<string, unknown>),
+    _citation: buildItemCitation(r, "ro_cyber_search_guidance"),
+  }));
+  return { results: annotated, count: annotated.length };
+}
+
+export function handleSearchAdvisories(
+  args: SearchAdvisoriesHandlerArgs,
+): SearchHandlerResult<Record<string, unknown>> {
+  const results = searchAdvisories({
+    query: args.query,
+    severity: args.severity,
+    limit: args.limit,
+  });
+  const annotated = results.map((r) => ({
+    ...(r as unknown as Record<string, unknown>),
+    _citation: buildItemCitation(r, "ro_cyber_search_advisories"),
+  }));
+  return { results: annotated, count: annotated.length };
+}
+
 // --- Server setup ------------------------------------------------------------
 
 const server = new Server(
@@ -215,18 +270,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     switch (name) {
       case "ro_cyber_search_guidance": {
         const parsed = SearchGuidanceArgs.parse(args);
-        const results = searchGuidance({
-          query: parsed.query,
-          type: parsed.type,
-          series: parsed.series,
-          status: parsed.status,
-          limit: parsed.limit,
-        });
-        const annotated = results.map((r) => ({
-          ...(r as unknown as Record<string, unknown>),
-          _citation: buildItemCitation(r, "ro_cyber_search_guidance"),
-        }));
-        return textContent({ results: annotated, count: annotated.length });
+        return textContent(handleSearchGuidance(parsed));
       }
 
       case "ro_cyber_get_guidance": {
@@ -246,16 +290,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "ro_cyber_search_advisories": {
         const parsed = SearchAdvisoriesArgs.parse(args);
-        const results = searchAdvisories({
-          query: parsed.query,
-          severity: parsed.severity,
-          limit: parsed.limit,
-        });
-        const annotated = results.map((r) => ({
-          ...(r as unknown as Record<string, unknown>),
-          _citation: buildItemCitation(r, "ro_cyber_search_advisories"),
-        }));
-        return textContent({ results: annotated, count: annotated.length });
+        return textContent(handleSearchAdvisories(parsed));
       }
 
       case "ro_cyber_get_advisory": {
@@ -311,7 +346,13 @@ async function main(): Promise<void> {
   process.stderr.write(`${SERVER_NAME} v${pkgVersion} running on stdio\n`);
 }
 
-main().catch((err) => {
-  process.stderr.write(`Fatal error: ${err instanceof Error ? err.message : String(err)}\n`);
-  process.exit(1);
-});
+// Guard: skip stdio connection when running under the test runner.
+// Vitest sets the VITEST env variable; without this guard, importing
+// the module in tests would call server.connect(StdioTransport) and
+// attempt to read from stdin.
+if (!process.env["VITEST"]) {
+  main().catch((err) => {
+    process.stderr.write(`Fatal error: ${err instanceof Error ? err.message : String(err)}\n`);
+    process.exit(1);
+  });
+}
